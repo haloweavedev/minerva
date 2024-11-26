@@ -5,7 +5,7 @@ import { ChatInput } from './ChatInput'
 import { ChatMessage } from './ChatMessage'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { ScrollArea } from '../ui/scroll-area'
-import { Book } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 
 export function ChatInterface() {
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
@@ -16,7 +16,7 @@ export function ChatInterface() {
     <Card className="flex flex-col h-[600px] w-full max-w-2xl mx-auto shadow-lg">
       <CardHeader className="border-b bg-primary text-primary-foreground rounded-t-lg">
         <CardTitle className="flex items-center space-x-2 font-serif">
-          <Book className="h-6 w-6" />
+          <Sparkles className="h-6 w-6" />
           <span>Minerva - AAR Assistant</span>
         </CardTitle>
       </CardHeader>
