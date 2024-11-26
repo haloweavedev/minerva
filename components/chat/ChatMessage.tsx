@@ -10,7 +10,7 @@ export function ChatMessage({ message }: { message: Message }) {
   return (
     <div
       className={cn(
-        "flex w-full items-start gap-4 p-4",
+        "flex w-full items-start gap-4",
         message.role === "user" ? "justify-end" : "justify-start"
       )}
     >
@@ -22,10 +22,10 @@ export function ChatMessage({ message }: { message: Message }) {
         </Avatar>
       )}
       <Card className={cn(
-        "flex-1 max-w-xl overflow-hidden p-3",
-        message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
+        "max-w-[80%] overflow-hidden p-3",
+        message.role === "user" ? "bg-primary text-primary-foreground" : "bg-secondary"
       )}>
-        <p className="leading-relaxed whitespace-pre-wrap">{message.content}</p>
+        <p className="leading-relaxed whitespace-pre-wrap text-sm">{message.content}</p>
       </Card>
       {message.role === "user" && (
         <Avatar className="h-8 w-8">
