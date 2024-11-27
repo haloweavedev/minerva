@@ -9,30 +9,21 @@ interface ReviewMetadata {
   grade: string;
   sensuality: string;
   url?: string;
-  amazonUrl?: string;
   asin?: string;
+  postId?: string;
   chunkType?: string;
   bookTypes?: string[];
+  reviewDate?: string;
+  featuredImage?: string;
   text: string;
   comments?: {
     count: number;
     latest?: Array<{
       commentAuthor: string;
       commentContent: string;
+      commentDate?: string;
     }>;
   };
-}
-
-interface BookDetails {
-  title: string;
-  author: string;
-  grade: string;
-  sensuality: string;
-  url?: string;
-  asin?: string;
-  bookTypes?: string[];
-  comments?: number;
-  score?: number;
 }
 
 const openaiClient = new OpenAI({
@@ -40,7 +31,7 @@ const openaiClient = new OpenAI({
 });
 
 const pineconeClient = new Pinecone({
-  apiKey: process.env.PINECONE_API_KEY!
+  apiKey: process.env.PINECONE_API_KEY!,
 });
 
 export const runtime = 'edge';
@@ -50,100 +41,199 @@ export async function POST(req: Request) {
     const { messages } = await req.json();
     const lastMessage = messages[messages.length - 1];
 
+    if (!process.env.OPENAI_API_KEY || !process.env.PINECONE_API_KEY || !process.env.PINECONE_INDEX_NAME) {
+      throw new Error('Missing required environment variables');
+    }
+
+    console.log('Processing request with messages:', messages);
+
     const embeddingResponse = await openaiClient.embeddings.create({
       model: "text-embedding-3-small",
       input: lastMessage.content,
       encoding_format: "float",
     });
-    
+
     const embedding = embeddingResponse.data[0].embedding;
+
+    console.log('Generated embedding, querying Pinecone...');
 
     const index = pineconeClient.index(process.env.PINECONE_INDEX_NAME!);
     const queryResponse = await index.query({
       vector: embedding,
-      topK: 4,
+      topK: 5,
       includeMetadata: true,
     });
 
-    const indexedBooks = new Map<string, BookDetails>();
-    queryResponse.matches?.forEach(match => {
+    console.log('Received Pinecone response:', queryResponse.matches?.length, 'matches');
+
+    // Process matches and build review context
+    const indexedBooks = new Map<string, ReviewMetadata>();
+    queryResponse.matches?.forEach((match) => {
       const meta = match.metadata as unknown as ReviewMetadata;
       if (meta?.bookTitle) {
-        indexedBooks.set(meta.bookTitle, {
-          title: meta.bookTitle,
-          author: meta.authorName,
-          grade: meta.grade,
-          sensuality: meta.sensuality,
-          url: meta.url,
-          asin: meta.asin,
-          bookTypes: meta.bookTypes,
-          comments: meta.comments?.count || 0,
-          score: match.score,
-        });
+        indexedBooks.set(meta.bookTitle, meta);
       }
     });
 
+    // Format review content for context
     const relevantContent = queryResponse.matches
-      ?.filter(match => match.score && match.score > 0.5)
-      ?.map(match => {
+      ?.filter((match) => match.score && match.score > 0.5)
+      ?.map((match) => {
         const metadata = match.metadata as unknown as ReviewMetadata;
         const comments = metadata.comments?.latest
-          ?.map(c => `${c.commentAuthor}: ${c.commentContent}`)
+          ?.map((c) => `Comment by ${c.commentAuthor}: "${c.commentContent}"`)
           .join('\n') || '';
-          
-        const buyLink = metadata.asin 
-          ? `Amazon ASIN: ${metadata.asin}`
-          : 'Buy link not available';
-          
-        return `
-Type: ${(metadata.chunkType || '').toUpperCase()}
-Book: "${metadata.bookTitle}" by ${metadata.authorName}
-Grade: ${metadata.grade}
-Sensuality: ${metadata.sensuality}
-Book Types: ${metadata.bookTypes?.join(', ') || 'Not specified'}
-Review Link: ${metadata.url || 'Not available'}
-${buyLink}
-${metadata.comments?.count ? `Number of Comments: ${metadata.comments.count}` : ''}
-${comments ? `\nReader Comments:\n${comments}` : ''}
-Content: ${metadata.text}
-        `.trim();
-      }).join('\n\n---\n\n');
 
+        return `
+Review of "${metadata.bookTitle}" by ${metadata.authorName}
+Rating: ${metadata.grade}
+Heat Level: ${metadata.sensuality}
+Genre/Types: ${metadata.bookTypes?.join(', ') || 'Not specified'}
+Review Link: ${metadata.url || 'Not available'}
+ASIN: ${metadata.asin || 'Not available'}
+Post ID: ${metadata.postId || 'Not available'}
+Review Date: ${metadata.reviewDate || 'Not specified'}
+${metadata.comments?.count ? `Number of Comments: ${metadata.comments.count}` : ''}
+
+Review Content:
+${metadata.text}
+
+${comments ? `\nReader Comments:\n${comments}` : ''}
+        `.trim();
+      })
+      .join('\n\n---\n\n');
+
+    // Convert indexed books to a readable format
     const currentBooks = Array.from(indexedBooks.values())
-      .map(book => `${book.title} (${book.grade}, ${book.sensuality}) by ${book.author}`)
-      .join(', ');
+      .map((book) => 
+        `"${book.bookTitle}" by ${book.authorName} (Grade: ${book.grade}, Heat Level: ${book.sensuality}, Types: ${book.bookTypes?.join(', ')})`
+      )
+      .join('\n');
+
+      const systemPrompt = `You are Minerva, the AI assistant for All About Romance (AAR). Your purpose is to help users discover and discuss romance books based on AAR's reviews.
+
+RESPONSE STRUCTURE:
+
+1. FOR EVERY MENTIONED BOOK, FIRST SHOW THE BOOK DATA:
+<book-data>
+{
+  "books": [
+    {
+      "title": "[EXACT TITLE]",
+      "author": "[EXACT AUTHOR]",
+      "grade": "[EXACT GRADE]",
+      "sensuality": "[EXACT RATING]",
+      "bookTypes": ["EXACT TYPES"],
+      "asin": "[EXACT ASIN]",
+      "reviewUrl": "[EXACT URL]",
+      "postId": "[EXACT POST ID]",
+      "featuredImage": "[EXACT FEATURED IMAGE URL]"
+    }
+  ]
+}
+</book-data>
+
+2. THEN STRUCTURE YOUR RESPONSE BASED ON QUERY TYPE:
+
+FOR SPECIFIC BOOK REVIEWS:
+"Here's what readers thought about [Book Title] by [Author]..."
+
+Overview: [Brief description of the book and its themes]
+
+Review Grade: The reviewer gave this [grade] because [reason]
+
+Reader Comments:
+> **[Username]**
+> [Exact comment text]
+
+[If there are multiple comments, separate them with a line break]
+
+Overall: [Brief summary of the general consensus]
+
+FOR RECOMMENDATIONS:
+"I'm glad you enjoyed [Original Book]! Let me suggest some similar books..."
+
+Top Recommendation:
+[Show book-data card for the best match]
+
+Why you'll like it: [Brief explanation of similarity]
+
+Additional Recommendations:
+- [Title] by [Author] ([Grade]) - [Brief reason + "[Review Link](url)"]
+- [Title] by [Author] ([Grade]) - [Brief reason + "[Review Link](url)"]
+
+FOR COMMENT-SPECIFIC QUERIES:
+"Here's what readers have been saying about [Book]..."
+
+Reader Discussions:
+> **[Username]**
+> [Comment text]
+> 
+> [Additional paragraphs if any]
+
+[Separate multiple comments with line breaks]
+
+Key Discussion Points:
+- [Point 1]
+- [Point 2]
+
+FOR RECENT REVIEWS:
+"Here are the latest reviews on AAR..."
+
+[Show book-data card]
+
+Quick Take: [Brief overview]
+Notable Comments:
+> **[Username]**
+> [Comment]
+
+[Repeat for each recent review]
+
+FORMATTING RULES:
+1. NEVER use ### or other header markdown
+2. Use bold (**text**) for emphasis and book titles
+3. Format comments in blockquotes with bolded usernames
+4. Keep paragraphs short and readable
+5. Use bullet points sparingly and only for lists
+6. All links must be correctly formatted markdown
+7. Ensure all review and buy links are exact matches from the data
+
+Available Reviews:
+${currentBooks}
+
+Review Content:
+${relevantContent}
+
+Remember: Only reference books and information from the provided data. If information is limited, acknowledge it clearly.`;
+
+    console.log('Streaming response...');
 
     const result = await streamText({
       model: aiopenai('gpt-4o-mini'),
       messages,
-      system: `You are Minerva, an AI assistant for All About Romance, a romance book review website. 
-
-Available books in our database: ${currentBooks}
-
-Relevant review information:
-${relevantContent || 'No specific reviews found for this query.'}
-
-Guidelines:
-- ONLY recommend or discuss books that are shown in the "Available books" list above
-- When mentioning a book, always include its grade and sensuality rating
-- When providing book purchase information, use the ASIN format: "You can find this book on Amazon using ASIN: [code]"
-- Share reader comments when available
-- Always mention book types when discussing books
-- If you can't find specific information, clearly state what you do know
-- If asked for recommendations, only suggest books from our database that match the criteria
-- Keep responses focused on the information we have indexed`,
+      system: systemPrompt,
+      temperature: 0.7,
+      maxTokens: 1000,
     });
 
     return result.toDataStreamResponse();
-    
   } catch (error) {
-    console.error('Error in chat route:', error instanceof Error ? error.message : error);
-    return new Response(JSON.stringify({ 
-      error: 'Internal Server Error',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
+    console.error('Detailed error in chat route:', {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : 'Unknown error occurred',
+      stack: error instanceof Error ? error.stack : undefined
     });
+
+    return new Response(
+      JSON.stringify({
+        error: 'Internal Server Error',
+        details: error instanceof Error ? error.message : 'Unknown error',
+        type: error instanceof Error ? error.name : 'UnknownError'
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
   }
 }
