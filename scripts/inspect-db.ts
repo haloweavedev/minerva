@@ -22,17 +22,17 @@ async function inspectPineconeDB() {
     
     console.log('\nIndex Statistics:');
     console.log('-----------------');
-    console.log(`Total Vector Count: ${stats.totalVectorCount}`);
+    console.log(`Total Record Count: ${stats.totalRecordCount}`);
     console.log(`Dimension: ${stats.dimension}`);
     console.log('\nNamespace Distribution:');
-    if (stats.namespaceStats) {
-      for (const [namespace, stat] of Object.entries(stats.namespaceStats)) {
-        console.log(`- ${namespace || 'default'}: ${stat.vectorCount} vectors`);
+    if (stats.namespaces) {
+      for (const [namespace, stat] of Object.entries(stats.namespaces)) {
+        console.log(`- ${namespace || 'default'}: ${stat.recordCount} records`);
       }
     }
 
     // Create a zero vector for querying (using the index dimension)
-    const dimension = 1536; // OpenAI's default dimension
+    const dimension = stats.dimension || 1536; // Use index dimension or default to 1536
     const queryVector = new Array(dimension).fill(0);
 
     // Query all documents
@@ -72,12 +72,15 @@ async function inspectPineconeDB() {
       if (match.metadata) {
         console.log('\nMetadata:');
         // Format metadata for better readability
-        const formattedMetadata = {
-          ...match.metadata,
-          // Truncate long text fields for readability
-          content: match.metadata.content?.substring(0, 200) + '...',
-          excerpt: match.metadata.excerpt?.substring(0, 200) + '...',
-        };
+        const formattedMetadata: Record<string, unknown> = { ...match.metadata };
+
+        // Truncate long text fields for readability
+        ['content', 'excerpt'].forEach(field => {
+          if (typeof match.metadata?.[field] === 'string') {
+            formattedMetadata[field] = (match.metadata[field] as string).substring(0, 200) + '...';
+          }
+        });
+
         console.dir(formattedMetadata, { depth: null, colors: true });
       }
     });
