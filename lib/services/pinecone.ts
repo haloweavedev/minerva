@@ -26,9 +26,7 @@ export class PineconeService {
 
   async getRelevantReviews(query: string, k: number = 4): Promise<Document[]> {
     const vectorStore = await this.getVectorStore();
-    const retriever = vectorStore.asRetriever({
-      searchKwargs: { k }
-    });
+    const retriever = vectorStore.asRetriever(k);
     
     try {
       return await retriever.getRelevantDocuments(query);
