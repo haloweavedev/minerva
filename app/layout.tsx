@@ -2,7 +2,6 @@ import "./globals.css"
 import type { Metadata } from "next"
 import { DM_Serif_Text, Inter } from 'next/font/google'
 
-// Font setup
 const dmSerifText = DM_Serif_Text({
   subsets: ['latin'],
   weight: ['400'],
@@ -14,14 +13,13 @@ const inter = Inter({
   variable: '--font-inter',
 })
 
-// Metadata
 export const metadata: Metadata = {
-  title: "Minerva - Romance Book Assistant",
+  title: "Minerva - AAR Assistant",
   description: "AI-powered romance book review chatbot for All About Romance - Find your next great romance read!",
   keywords: "romance books, book reviews, AI chatbot, book recommendations, All About Romance",
   authors: [{ name: "All About Romance" }],
   openGraph: {
-    title: "Minerva - Romance Book Assistant",
+    title: "Minerva - AAR Assistant",
     description: "Find your next great romance read with AI-powered book recommendations and reviews.",
     url: "https://allaboutromance.com",
     siteName: "All About Romance",
@@ -29,7 +27,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Minerva - Romance Book Assistant",
+    title: "Minerva - AAR Assistant",
     description: "AI-powered romance book recommendations and reviews",
   },
 }
@@ -45,13 +43,11 @@ export default function RootLayout({
       className={`${dmSerifText.variable} ${inter.variable}`}
       suppressHydrationWarning
     >
-      <head>
-        <link rel="icon" href="/favicon.ico" />
-      </head>
-      <body className="min-h-screen bg-gradient-to-b from-background/90 via-background/50 to-background/90 font-sans antialiased">
-        <main className="flex min-h-screen flex-col items-center justify-between p-4 md:p-12">
+      <body className="min-h-screen overflow-hidden bg-[#1a1a2e]">
+        <div className="fixed inset-0 bg-[radial-gradient(circle_at_center,rgba(127,133,194,0.15)_0%,rgba(26,26,46,0.9)_50%,rgba(26,26,46,1)_100%)]" />
+        <div className="relative h-screen">
           {children}
-        </main>
+        </div>
       </body>
     </html>
   )

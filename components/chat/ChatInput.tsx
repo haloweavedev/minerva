@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { useRef, useEffect, KeyboardEvent } from "react"
 import { Send } from 'lucide-react'
+import { motion } from 'framer-motion'
 
 interface ChatInputProps {
   input: string
@@ -19,7 +20,6 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
 
-  // Auto-resize textarea as content grows
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
@@ -27,68 +27,58 @@ export function ChatInput({
     }
   }, [input])
 
-  // Handle keyboard shortcuts
   const handleKeyPress = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Submit on Enter (but not with Shift+Enter for new lines)
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       formRef.current?.requestSubmit()
     }
   }
 
-  // Romance-specific placeholders
-  const placeholders = [
-    "Ask about a specific romance book review...",
-    "Compare two romance books...",
-    "Looking for books with enemies-to-lovers trope?",
-    "Find romance books with high ratings...",
-    "Search for historical romance recommendations...",
-    "What did readers think about [book title]?",
-    "Ask about romance books by [author name]...",
-    "Looking for specific heat level recommendations?",
-  ]
-
-  // Randomly select a placeholder on each render
-  const placeholder = placeholders[Math.floor(Math.random() * placeholders.length)]
-
   return (
     <form 
       ref={formRef}
       onSubmit={handleSubmit} 
-      className="relative flex items-center gap-2 rounded-lg bg-background/95 backdrop-blur p-2"
+      className="relative flex items-center gap-2"
     >
-      <Textarea
-        ref={textareaRef}
-        tabIndex={0}
-        rows={1}
-        value={input}
-        onChange={handleInputChange}
-        onKeyDown={handleKeyPress}
-        placeholder={placeholder}
-        spellCheck={true}
-        className="min-h-[44px] w-full resize-none bg-transparent px-4 py-[0.6rem] focus-visible:ring-0 focus-visible:ring-offset-0 border-none"
-        aria-label="Type your message"
-      />
-      <Button 
-        type="submit" 
-        size="icon" 
-        disabled={isLoading || !input.trim()}
-        className={`absolute right-4 transition-all duration-200 ${
-          isLoading ? 'opacity-50' : 'hover:bg-primary hover:text-primary-foreground'
-        }`}
+      <div className="relative flex-1">
+        <Textarea
+          ref={textareaRef}
+          tabIndex={0}
+          rows={1}
+          value={input}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyPress}
+          placeholder="Ask about romance books, reviews, or recommendations..."
+          spellCheck={true}
+          className="min-h-[44px] w-full resize-none bg-white/5 hover:bg-white/10 focus:bg-white/10 px-4 py-[0.6rem] focus-visible:ring-1 focus-visible:ring-[#7f85c2] border-none rounded-lg text-white placeholder-white/50 transition-colors"
+          aria-label="Type your message"
+        />
+      </div>
+      <motion.div
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
       >
-        {isLoading ? (
-          <div role="status" className="flex justify-center" aria-label="Sending message">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-r-foreground" />
-            <span className="sr-only">Sending message...</span>
-          </div>
-        ) : (
-          <>
-            <Send className="h-4 w-4" />
-            <span className="sr-only">Send message</span>
-          </>
-        )}
-      </Button>
+        <Button 
+          type="submit" 
+          size="icon" 
+          disabled={isLoading || !input.trim()}
+          className={`shrink-0 bg-[#7f85c2] text-white hover:bg-[#6b70a3] transition-colors ${
+            isLoading ? 'opacity-50 cursor-not-allowed' : ''
+          }`}
+        >
+          {isLoading ? (
+            <div role="status" className="flex justify-center" aria-label="Sending message">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-r-transparent" />
+              <span className="sr-only">Sending message...</span>
+            </div>
+          ) : (
+            <>
+              <Send className="h-4 w-4" />
+              <span className="sr-only">Send message</span>
+            </>
+          )}
+        </Button>
+      </motion.div>
     </form>
   )
 }
