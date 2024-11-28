@@ -1,67 +1,91 @@
 import { z } from 'zod';
 
-// Book data validation schema
-const BookSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  author: z.string().min(1, "Author is required"),
-  grade: z.string().regex(/^[A-F][+-]?$/, "Invalid grade format"),
-  sensuality: z.enum(["Burning", "Hot", "Warm", "Subtle", "Kisses"]),
-  bookTypes: z.array(z.string()).min(1, "At least one book type is required"),
-  asin: z.string().regex(/^[0-9A-Z]{10}$/, "Invalid ASIN format"),
-  reviewUrl: z.string().url("Invalid review URL"),
-  featuredImage: z.string(),
-  synopsis: z.string().optional(),
-  comments: z.object({
-    count: z.number().int().nonnegative(),
-    highlights: z.array(z.string()).optional()
-  }).optional()
+// Review metadata for Pinecone
+export const ReviewMetadataSchema = z.object({
+  postId: z.string().optional(),
+  title: z.string(),
+  authorName: z.string(),
+  permalink: z.string().url().optional(),
+  featuredImage: z.string().url().optional(),
+  excerpt: z.string().optional(),
+  content: z.string(),
+  grade: z.string().optional(),
+  sensuality: z.string().optional(),
+  bookTypes: z.array(z.string()).optional(),
+  reviewTags: z.array(z.string()).optional(),
+  amazonLinks: z.array(z.string().url()).optional(),
+  asin: z.string().optional(),
+  publishDate: z.string().optional(),
+  reviewAuthor: z.string().optional(),
+  comments: z.array(z.object({
+    author: z.string(),
+    content: z.string(),
+    date: z.string()
+  })).optional()
 });
 
+// Book schema for chat responses
+export const BookSchema = z.object({
+  title: z.string(),
+  author: z.string(),
+  grade: z.string().optional(),
+  sensuality: z.string().optional(),
+  bookTypes: z.array(z.string()).optional(),
+  asin: z.string().optional(),
+  reviewUrl: z.string().url().optional(),
+  postId: z.string().optional(),
+  featuredImage: z.string().url().optional(),
+  excerpt: z.string().optional(),
+  reviewAuthor: z.string().optional(),
+  publishDate: z.string().optional()
+});
+
+// Validation schema for chat responses
 export const BookDataSchema = z.object({
-  books: z.array(BookSchema).min(1, "At least one book is required")
+  books: z.array(BookSchema)
 });
 
-export function validateBookData(content: string): { 
-  isValid: boolean; 
-  data?: z.infer<typeof BookDataSchema>;
-  error?: string 
-} {
+// Export types
+export type ReviewMetadata = z.infer<typeof ReviewMetadataSchema>;
+export type Book = z.infer<typeof BookSchema>;
+export type BookData = z.infer<typeof BookDataSchema>;
+
+// Helper to validate and extract book data from chat responses
+export function extractBookData(content: string): BookData | null {
+  const bookDataMatch = content.match(/<book-data>(.*?)<\/book-data>/s);
+  if (!bookDataMatch) return null;
+  
   try {
-    // Extract book data
-    const match = content.match(/<book-data>([\s\S]*?)<\/book-data>/);
-    if (!match) {
-      return { 
-        isValid: false, 
-        error: "Missing book-data structure" 
-      };
-    }
-
-    // Parse JSON
-    const json = JSON.parse(match[1]);
-    
-    // Validate against schema
-    const result = BookDataSchema.safeParse(json);
-    
-    if (!result.success) {
-      return {
-        isValid: false,
-        error: result.error.errors.map(e => e.message).join(", ")
-      };
-    }
-
-    return {
-      isValid: true,
-      data: result.data
-    };
+    const bookData = JSON.parse(bookDataMatch[1]);
+    return BookDataSchema.parse(bookData);
   } catch (error) {
-    return {
-      isValid: false,
-      error: error instanceof Error ? error.message : "Invalid book data"
-    };
+    console.error('Error parsing book data:', error);
+    return null;
   }
 }
 
-// Optional: Helper function to format error messages for display
-export function formatValidationError(error: string): string {
-  return `⚠️ Response validation failed: ${error}. This has been logged for improvement.`;
+// Helper to format review metadata for vector storage
+export function formatReviewMetadata(review: ReviewMetadata): Record<string, any> {
+  return {
+    postId: review.postId,
+    title: review.title,
+    authorName: review.authorName,
+    permalink: review.permalink,
+    featuredImage: review.featuredImage,
+    excerpt: review.excerpt,
+    content: review.content,
+    grade: review.grade,
+    sensuality: review.sensuality,
+    bookTypes: review.bookTypes?.join(', '),
+    reviewTags: review.reviewTags?.join(', '),
+    amazonLinks: review.amazonLinks?.join(', '),
+    asin: review.asin,
+    publishDate: review.publishDate,
+    reviewAuthor: review.reviewAuthor
+  };
+}
+
+// Helper to check if string is book data
+export function isBookData(content: string): boolean {
+  return content.includes('<book-data>') && content.includes('</book-data>');
 }
