@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Message, continueConversation } from './actions';
+import { type Message } from 'ai';
+import { continueConversation } from './actions';
 import { readStreamableValue } from 'ai/rsc';
 import { Toaster, toast } from 'sonner';
 import { ChatInterface } from '@/components/chat/ChatInterface';
@@ -47,7 +48,7 @@ export default function Home() {
   const handleSend = async (content: string) => {
     try {
       setIsLoading(true);
-      const newUserMessage = { role: 'user' as const, content };
+      const newUserMessage: Message = { role: 'user', content, id: Date.now().toString() };
       const newConversation = [...conversation, newUserMessage];
 
       const { messages, newMessage } = await continueConversation(newConversation);
@@ -57,7 +58,7 @@ export default function Home() {
         textContent = `${textContent}${delta}`;
         setConversation([
           ...messages,
-          { role: 'assistant', content: textContent }
+          { role: 'assistant', content: textContent, id: 'response-' + Date.now() }
         ]);
       }
 

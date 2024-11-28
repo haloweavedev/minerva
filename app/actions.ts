@@ -4,6 +4,8 @@ import { createStreamableValue } from 'ai/rsc';
 import { type Message } from 'ai';
 import { chatService } from '@/lib/services/chat';
 
+export type { Message };
+
 export async function continueConversation(history: Message[]) {
   const stream = createStreamableValue();
 
