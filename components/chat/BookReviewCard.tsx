@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { ExternalLink, Star, BookOpen, ThermometerSun, Tag } from 'lucide-react'
+import { BookOpen, Star, ThermometerSun, Tag, ExternalLink } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 interface BookReviewCardProps {
@@ -17,6 +17,7 @@ interface BookReviewCardProps {
   reviewTags?: string[]
 }
 
+// Grade color mapping with tailwind classes
 const gradeColors = {
   'A+': 'bg-emerald-500',
   'A': 'bg-emerald-400',
@@ -31,8 +32,9 @@ const gradeColors = {
   'D': 'bg-orange-400',
   'D-': 'bg-orange-300',
   'F': 'bg-red-500'
-} as const
+} as const;
 
+// Sensuality rating color mapping
 const sensualityColors = {
   'Burning': 'bg-red-500/20 text-red-200',
   'Hot': 'bg-orange-500/20 text-orange-200',
@@ -40,7 +42,7 @@ const sensualityColors = {
   'Subtle': 'bg-blue-500/20 text-blue-200',
   'Kisses': 'bg-pink-500/20 text-pink-200',
   'None': 'bg-gray-500/20 text-gray-200',
-} as const
+} as const;
 
 export default function BookReviewCard({
   title,
@@ -54,8 +56,8 @@ export default function BookReviewCard({
   featuredImage,
   reviewTags = []
 }: BookReviewCardProps) {
-  const gradeKey = grade as keyof typeof gradeColors
-  const sensualityKey = sensuality as keyof typeof sensualityColors
+  const gradeKey = grade as keyof typeof gradeColors;
+  const sensualityKey = sensuality as keyof typeof sensualityColors;
 
   return (
     <motion.div
@@ -66,11 +68,11 @@ export default function BookReviewCard({
         duration: 0.5,
         ease: [0.4, 0, 0.2, 1]
       }}
-      className="relative"
     >
-      <Card className="overflow-hidden bg-white/10 backdrop-blur border-white/20 transition-shadow hover:shadow-lg">
+      <Card className="overflow-hidden bg-white/10 backdrop-blur border-white/20 transition-all hover:shadow-lg hover:bg-white/15">
         <CardContent className="p-4">
           <div className="flex gap-4">
+            {/* Book Cover Section */}
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -78,7 +80,7 @@ export default function BookReviewCard({
               className="flex-shrink-0"
             >
               {featuredImage ? (
-                <div className="relative w-24 h-36 overflow-hidden rounded-md">
+                <div className="relative w-24 h-36 overflow-hidden rounded-lg shadow-md">
                   <img 
                     src={featuredImage} 
                     alt={`Cover of ${title}`} 
@@ -86,22 +88,25 @@ export default function BookReviewCard({
                   />
                 </div>
               ) : (
-                <div className="w-24 h-36 bg-white/5 rounded-md flex items-center justify-center">
+                <div className="w-24 h-36 bg-white/5 rounded-lg flex items-center justify-center shadow-md">
                   <BookOpen className="w-8 h-8 text-white/50" />
                 </div>
               )}
             </motion.div>
             
-            <div className="flex-1 min-w-0 space-y-2">
+            {/* Book Details Section */}
+            <div className="flex-1 min-w-0 space-y-3">
+              {/* Title and Author */}
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.3 }}
               >
-                <h3 className="font-serif text-xl leading-tight text-white line-clamp-2">{title}</h3>
-                <p className="text-white/80 text-sm mt-1">by {author}</p>
+                <h3 className="font-serif text-xl leading-tight text-white line-clamp-2 mb-1">{title}</h3>
+                <p className="text-white/80 text-sm">by {author}</p>
               </motion.div>
 
+              {/* Grades and Ratings */}
               <motion.div 
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -110,7 +115,7 @@ export default function BookReviewCard({
               >
                 {grade && (
                   <Badge 
-                    className={`${gradeColors[gradeKey] || 'bg-[#7f85c2]/50'} text-white transition-colors`}
+                    className={`${gradeColors[gradeKey] || 'bg-[#7f85c2]/50'} text-white font-medium transition-colors`}
                   >
                     <Star className="w-3 h-3 mr-1 fill-current" />
                     {grade}
@@ -128,6 +133,7 @@ export default function BookReviewCard({
                 )}
               </motion.div>
 
+              {/* Book Types and Tags */}
               {(bookTypes.length > 0 || reviewTags.length > 0) && (
                 <motion.div 
                   initial={{ opacity: 0, y: 10 }}
@@ -139,7 +145,7 @@ export default function BookReviewCard({
                     <Badge 
                       key={type} 
                       variant="outline" 
-                      className="border-white/20 text-sm text-white bg-white/5"
+                      className="border-white/20 text-xs text-white/90 bg-white/5"
                     >
                       <Tag className="w-3 h-3 mr-1" />
                       {type}
@@ -149,7 +155,7 @@ export default function BookReviewCard({
                     <Badge 
                       key={tag} 
                       variant="outline" 
-                      className="border-white/20 text-sm text-white/80 bg-white/5"
+                      className="border-white/20 text-xs text-white/80 bg-white/5"
                     >
                       #{tag}
                     </Badge>
@@ -157,12 +163,14 @@ export default function BookReviewCard({
                 </motion.div>
               )}
               
+              {/* Action Buttons */}
               <motion.div 
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.6 }}
-                className="flex flex-wrap gap-2 pt-2"
+                className="flex flex-wrap gap-2 pt-1"
               >
+                {/* Amazon Buy Button */}
                 {asin && (
                   <Button 
                     variant="default"
@@ -181,7 +189,8 @@ export default function BookReviewCard({
                   </Button>
                 )}
                 
-                {reviewUrl && (
+                {/* Read Review Button - Using postId directly */}
+                {postId && (
                   <Button 
                     variant="secondary"
                     size="sm"
@@ -189,29 +198,11 @@ export default function BookReviewCard({
                     asChild
                   >
                     <a
-                      href={reviewUrl}
+                      href={`https://allaboutromance.com/?p=${postId}`}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
                       Read Review
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </Button>
-                )}
-                
-                {postId && !reviewUrl && (
-                  <Button 
-                    variant="secondary"
-                    size="sm"
-                    className="gap-2 bg-white/10 text-white hover:bg-white/20 transition-colors"
-                    asChild
-                  >
-                    <a
-                      href={`https://web.archive.org/web/*/https://allaboutromance.com/?p=${postId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      View Archived Review
                       <ExternalLink className="w-3 h-3" />
                     </a>
                   </Button>
