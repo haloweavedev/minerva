@@ -21,16 +21,16 @@ const rateLimitStore = new Map<string, number[]>();
 function isRateLimited(userId: string): boolean {
   const now = Date.now();
   const userRequests = rateLimitStore.get(userId) || [];
-  
+
   // Clean old requests
   const recentRequests = userRequests.filter(
     timestamp => now - timestamp < RATE_LIMIT.WINDOW_MS
   );
-  
+
   if (recentRequests.length >= RATE_LIMIT.MAX_REQUESTS) {
     return true;
   }
-  
+
   recentRequests.push(now);
   rateLimitStore.set(userId, recentRequests);
   return false;
@@ -41,7 +41,7 @@ export async function continueConversation(
   userId: string = 'anonymous'
 ) {
   const stream = createStreamableValue();
-  
+
   // Check rate limit
   if (isRateLimited(userId)) {
     stream.update("I apologize, but you've reached the rate limit. Please try again in a minute.");
@@ -72,7 +72,7 @@ export async function continueConversation(
         (async () => {
           for await (const chunk of textStream) {
             fullResponse += chunk;
-            
+
             // Rate limit updates to every 100ms
             const now = Date.now();
             if (now - lastUpdate >= 100) {
@@ -88,14 +88,14 @@ export async function continueConversation(
         stream.update(fullResponse);
         console.log('Completed response:', fullResponse.slice(0, 200) + '...');
       }
-      
+
       stream.done();
 
     } catch (error) {
       console.error('Error in chat stream:', error);
-      
+
       let errorMessage: string;
-      
+
       if (error instanceof Error) {
         if (error.message === 'Stream timeout') {
           errorMessage = "I apologize, but the response took too long. Please try a shorter query or try again.";
