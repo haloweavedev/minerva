@@ -6,6 +6,49 @@ import { Message } from 'ai';
 import { pineconeService } from './pinecone';
 import { HumanMessage, AIMessage, BaseMessage } from '@langchain/core/messages';
 
+// TypeScript interfaces for better type safety
+interface Comment {
+  author: string;
+  content: string;
+}
+
+interface ReviewMetadata {
+  bookTitle?: string;
+  authorName?: string;
+  grade?: string;
+  sensuality?: string;
+  bookTypes?: string[];
+  commentAuthors?: string[];
+  commentContents?: string[];
+  asin?: string;
+  url?: string;
+  postId?: string;
+  featuredImage?: string;
+  reviewerName?: string;
+  publishDate?: string;
+  text?: string;
+}
+
+interface BookData {
+  title: string;
+  author: string;
+  grade: string | null;
+  sensuality: string | null;
+  bookTypes: string[];
+  asin: string | null;
+  reviewUrl: string | null;
+  postId: string | null;
+  featuredImage: string | null;
+  reviewerName: string | null;
+  publishDate: string | null;
+  comments: Comment[] | null;
+  reviewContent: string | null;
+}
+
+interface ProcessedMetadata {
+  [key: string]: BookData;
+}
+
 const BOOK_DATA_TEMPLATE = `{{
   "books": [
     {{
@@ -24,65 +67,60 @@ const BOOK_DATA_TEMPLATE = `{{
       "comments": Array<{{
         author: string,
         content: string
-      }}> | null
+       }}> | null
     }}
   ]
 }}`;
 
-const SYSTEM_TEMPLATE = `You are Minerva, an AI assistant for All About Romance (AAR). You help users discover and discuss romance books based on AAR's reviews.
+const SYSTEM_TEMPLATE = `You are Minerva, an AI assistant for All About Romance (AAR). Help users discover great romance books through AAR's reviews.
 
-When responding about books, ALWAYS structure your response in this format:
+VERY IMPORTANT:
+- Always start the responses with ---RESPONSE-START---
+- DO NOT use asterisks (*) for emphasis 
+- DO NOT add any markdown or formatting at the start of your response
+- Start DIRECTLY with the book-data block, then your natural response
 
-1. First output the book data in this exact format:
+Structure your responses exactly as follows:
+
+1. First output this exact format (no other text before this):
 <book-data>
 ${BOOK_DATA_TEMPLATE}
 </book-data>
 
-2. Then format your response based on the query type:
-
-FOR BOOK REVIEWS:
-# Review of [Title] by [Author]
-
-## Overview
-[2-3 sentences summarizing the book and review]
+2. Then for BOOK REVIEWS:
+# [Title] by [Author] - Overview
 
 ## Review Details
 • Grade: [grade] from [reviewer name]
 • Published: [date]
-• Sensuality: [rating]
 • Genre: [book types]
+• Sensuality: [rating]
 
-## Key Points
-• [3-4 key points about the book/review]
+## Summary
+[2-3 sentences about the book]
+
+## Highlights
+• [2-3 notable points from review]
 
 [If comments exist:]
-## Reader Comments ([count] total):
-• [Reader name]: "[exact quote]"
+## Reader Feedback
+• [Reader name]: "[direct quote]"
 
-FOR RECOMMENDATIONS:
-# Books Similar to [Title]
+3. For RECOMMENDATIONS:
+# Books You Might Enjoy
 
 For each recommendation:
-1. Include book data block
-2. Add:
+## [Title] by [Author]
+• Brief overview 
+• Notable themes or elements
+• Why readers enjoyed it
 
-## Why You Might Like This:
-• [2-3 specific similarities]
-• [Notable themes/elements]
-• [Grade and reviewer perspective]
-
-IMPORTANT RULES:
-1. ALWAYS start with the book data block
-2. Only discuss books from the provided metadata
-3. Use bullet points (•) consistently
-4. Keep responses clear and concise
-5. Format text professionally
-6. If no relevant information is found, say "I apologize, but I don't have enough information to answer that question accurately."
+Keep language natural and clear. Focus on what readers care about most.
 
 Available metadata: {metadata}
 Context: {context}
 Human: {question}
-AI: Let me help you with that. Based on the information I have:`;
+Assistant: Let me find relevant books based on your request:`;
 
 export class ChatService {
   private llm: ChatOpenAI;
@@ -90,7 +128,7 @@ export class ChatService {
   constructor() {
     this.llm = new ChatOpenAI({
       modelName: "gpt-4o-mini",
-      temperature: 0.1,
+      temperature: 0.7,
       streaming: true,
       maxTokens: 1500,
       timeout: 60000 // 60 seconds timeout
@@ -113,19 +151,20 @@ export class ChatService {
       .join('\n');
   }
 
-  private extractBookMetadata(docs: any[]): Record<string, any> {
-    return docs.reduce((acc: Record<string, any>, doc) => {
-      const metadata = doc.metadata;
+  private extractBookMetadata(docs: any[]): ProcessedMetadata {
+    return docs.reduce((acc: ProcessedMetadata, doc) => {
+      const metadata = doc.metadata as ReviewMetadata;
       if (!metadata?.bookTitle || !metadata?.authorName) return acc;
 
       const key = `${metadata.bookTitle}-${metadata.authorName}`;
       
-      const validComments = (metadata.commentContents || [])
+      // Fixed TypeScript error by properly typing the comment
+      const validComments: Comment[] = (metadata.commentContents || [])
         .map((content: string, index: number) => ({
           author: metadata.commentAuthors?.[index]?.trim() || '',
           content: content?.trim() || ''
         }))
-        .filter(c => c.author && c.content);
+        .filter((c: Comment) => c.author && c.content);
 
       acc[key] = {
         title: metadata.bookTitle.trim(),
@@ -153,6 +192,7 @@ export class ChatService {
     const latestMessage = messages[messages.length - 1];
     
     try {
+      // Get relevant reviews
       const relevantDocs = await pineconeService.getRelevantReviews(
         latestMessage.content,
         6
@@ -183,7 +223,9 @@ export class ChatService {
         new StringOutputParser()
       ]);
 
-      return await chain.stream(latestMessage.content);
+      // Stream the response
+      const stream = await chain.stream(latestMessage.content);
+      return stream;
 
     } catch (error) {
       console.error('Error in chat chain:', error);
