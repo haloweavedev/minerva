@@ -1,11 +1,13 @@
-import { Message } from "ai"
-import { cn } from "@/lib/utils"
-import { Avatar } from "../ui/avatar"
-import { Bot, User } from 'lucide-react'
-import { useEffect, useState, memo } from "react"
-import BookReviewCard from "./BookReviewCard"
-import { Book } from "@/lib/validators/book-data"
-import { motion, AnimatePresence } from 'framer-motion'
+'use client';
+
+import { Message } from "ai";
+import { cn } from "@/lib/utils";
+import { Avatar } from "../ui/avatar";
+import { Bot, User } from 'lucide-react';
+import { useEffect, useState, memo } from "react";
+import BookReviewCard from "./BookReviewCard";
+import { Book } from "@/lib/validators/book-data";
+import { motion, AnimatePresence } from 'framer-motion';
 
 // Loading skeleton with improved animation
 const MessageSkeleton = ({ isUser = false }) => (
@@ -49,7 +51,7 @@ const MessageSkeleton = ({ isUser = false }) => (
       </Avatar>
     )}
   </motion.div>
-)
+);
 
 interface ProcessedContent {
   books: Book[];
@@ -98,8 +100,7 @@ const ChatMessage = memo(({ message, isLoading }: ChatMessageProps) => {
       transition: { duration: 0.4, ease: [0.4, 0, 0.2, 1] }
     },
     exit: { 
-      opacity: 0, 
-      y: -20,
+      opacity: 0,y: -20,
       transition: { duration: 0.3 }
     }
   };
@@ -315,7 +316,7 @@ function processHTMLContent(content: string): string {
     
     // Links with enhanced hover effects
     .replace(
-      /\[([^\]]+)\]\(([^)]+)\)/g, 
+      /\[([^\]]+)\]$$([^)]+)$$/g, 
       '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-[#7f85c2] hover:text-[#9da3d4] hover:underline transition-colors duration-200">$1</a>'
     )
     
@@ -334,7 +335,7 @@ function processHTMLContent(content: string): string {
     .map(p => {
       if (!p.trim()) return '';
       if (p.startsWith('<')) return p;
-      return `<p class="text-white/90 leading-relaxed mb-4">${ p.trim() }</p>`;
+      return `<p class="text-white/90 leading-relaxed mb-4">${p.trim()}</p>`;
     })
     .filter(Boolean)
     .join('\n');

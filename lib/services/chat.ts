@@ -1,35 +1,44 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { StringOutputParser } from '@langchain/core/output_parsers';
-import { ChatPromptTemplate } from '@langchain/core/prompts';
+import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts';
 import { RunnableSequence } from '@langchain/core/runnables';
 import { Message } from 'ai';
 import { pineconeService } from './pinecone';
+import { HumanMessage, AIMessage, BaseMessage } from '@langchain/core/messages';
 
-const BOOK_DATA_TEMPLATE = `<book-data>
-{{
+const BOOK_DATA_TEMPLATE = `{{
   "books": [
     {{
-      "title": "(bookTitle)",
-      "author": "(authorName)",
-      "grade": "(grade)",
-      "sensuality": "(sensuality)",
-      "bookTypes": "(bookTypes)",
-      "asin": "(asin)",
-      "reviewUrl": "(url)",
-      "postId": "(postId)",
-      "featuredImage": "(featuredImage)"
+      "title": string,
+      "author": string,
+      "grade": string | null,
+      "sensuality": string | null,
+      "bookTypes": string[],
+      "asin": string | null,
+      "reviewUrl": string | null,
+      "postId": string | null,
+      "featuredImage": string | null,
+      "reviewerName": string | null,
+      "publishDate": string | null,
+      "reviewContent": string | null,
+      "comments": Array<{{
+        author: string,
+        content: string
+      }}> | null
     }}
   ]
-}}
-</book-data>`;
+}}`;
 
-const SYSTEM_TEMPLATE = `You are Minerva, an AI assistant for All About Romance (AAR). You help users discover and discuss romance books based on AAR's reviews. You must only provide information from the review metadata and context provided.
+const SYSTEM_TEMPLATE = `You are Minerva, an AI assistant for All About Romance (AAR). You help users discover and discuss romance books based on AAR's reviews.
 
-First, output any mentioned book's data using this exact format (include full metadata, no placeholders):
+When responding about books, ALWAYS structure your response in this format:
 
+1. First output the book data in this exact format:
+<book-data>
 ${BOOK_DATA_TEMPLATE}
+</book-data>
 
-Then, format your response based on the query type:
+2. Then format your response based on the query type:
 
 FOR BOOK REVIEWS:
 # Review of [Title] by [Author]
@@ -44,39 +53,36 @@ FOR BOOK REVIEWS:
 • Genre: [book types]
 
 ## Key Points
-• [Point 1 about the book/review]
-• [Point 2 about the book/review]
-• [Point 3 about the book/review]
+• [3-4 key points about the book/review]
 
-[ONLY if commentCount > 0:]
-## Reader Comments ([X] total comments):
-• [Reader 1 name]: "[exact quote]"
-• [Reader 2 name]: "[exact quote]"
+[If comments exist:]
+## Reader Comments ([count] total):
+• [Reader name]: "[exact quote]"
 
 FOR RECOMMENDATIONS:
 # Books Similar to [Title]
 
 For each recommendation:
-1. Insert book data block
+1. Include book data block
 2. Add:
 
-## Why You Might Like [Title]:
-• [2-3 specific similarities based on review]
-• [Notable themes or elements]
+## Why You Might Like This:
+• [2-3 specific similarities]
+• [Notable themes/elements]
 • [Grade and reviewer perspective]
 
-STRICT RULES:
-1. Output MUST start with book data block - no text before it
-2. Only discuss books present in provided metadata
-3. Only include reader comments when commentCount > 0
-4. Use bullet points (•) not asterisks (*) or dashes (-)
-5. Always validate data exists before mentioning
-6. Maintain consistent spacing and formatting
+IMPORTANT RULES:
+1. ALWAYS start with the book data block
+2. Only discuss books from the provided metadata
+3. Use bullet points (•) consistently
+4. Keep responses clear and concise
+5. Format text professionally
+6. If no relevant information is found, say "I apologize, but I don't have enough information to answer that question accurately."
 
 Available metadata: {metadata}
 Context: {context}
-History: {chat_history}
-Question: {question}`;
+Human: {question}
+AI: Let me help you with that. Based on the information I have:`;
 
 export class ChatService {
   private llm: ChatOpenAI;
@@ -86,15 +92,17 @@ export class ChatService {
       modelName: "gpt-4o-mini",
       temperature: 0.1,
       streaming: true,
-      maxTokens: 1500
+      maxTokens: 1500,
+      timeout: 60000 // 60 seconds timeout
     });
   }
 
-  private formatChatHistory(messages: Message[]): string {
-    return messages
-      .slice(-3)
-      .map(m => `${m.role === 'user' ? 'Human' : 'Assistant'}: ${m.content}`)
-      .join('\n\n');
+  private formatChatHistory(messages: Message[]): BaseMessage[] {
+    return messages.slice(-5).map(m => 
+      m.role === 'user' 
+        ? new HumanMessage(m.content) 
+        : new AIMessage(m.content)
+    );
   }
 
   private formatContext(context: string): string {
@@ -105,15 +113,6 @@ export class ChatService {
       .join('\n');
   }
 
-  private validateComment(comment: any): boolean {
-    return comment?.author 
-           && typeof comment.author === 'string' 
-           && comment.author.trim().length > 0
-           && comment?.content 
-           && typeof comment.content === 'string' 
-           && comment.content.trim().length > 0;
-  }
-
   private extractBookMetadata(docs: any[]): Record<string, any> {
     return docs.reduce((acc: Record<string, any>, doc) => {
       const metadata = doc.metadata;
@@ -121,41 +120,30 @@ export class ChatService {
 
       const key = `${metadata.bookTitle}-${metadata.authorName}`;
       
-      // Validate comments
-      const validatedComments = (metadata.commentContents || [])
+      const validComments = (metadata.commentContents || [])
         .map((content: string, index: number) => ({
           author: metadata.commentAuthors?.[index]?.trim() || '',
           content: content?.trim() || ''
         }))
-        .filter(this.validateComment);
+        .filter(c => c.author && c.content);
 
-      // Build clean metadata
       acc[key] = {
-        bookTitle: metadata.bookTitle.trim(),
-        authorName: metadata.authorName.trim(),
-        grade: metadata.grade?.trim() || '',
-        sensuality: metadata.sensuality?.trim() || '',
+        title: metadata.bookTitle.trim(),
+        author: metadata.authorName.trim(),
+        grade: metadata.grade?.trim() || null,
+        sensuality: metadata.sensuality?.trim() || null,
         bookTypes: Array.isArray(metadata.bookTypes) 
-          ? metadata.bookTypes.map(t => t.trim())
+          ? metadata.bookTypes.map((t: string) => t.trim())
           : [],
-        asin: metadata.asin?.trim() || '',
-        url: metadata.url?.trim() || '',
-        postId: metadata.postId?.trim() || '',
-        featuredImage: metadata.featuredImage?.trim() || '',
-        reviewerName: metadata.reviewerName?.trim() || '',
-        publishDate: metadata.publishDate?.trim() || '',
-        commentCount: validatedComments.length,
-        comments: validatedComments,
-        reviewContent: metadata.text?.trim() || ''
+        asin: metadata.asin?.trim() || null,
+        reviewUrl: metadata.url?.trim() || null,
+        postId: metadata.postId?.trim() || null,
+        featuredImage: metadata.featuredImage?.trim() || null,
+        reviewerName: metadata.reviewerName?.trim() || null,
+        publishDate: metadata.publishDate?.trim() || null,
+        comments: validComments.length > 0 ? validComments : null,
+        reviewContent: metadata.text?.trim() || null
       };
-
-      // Ensure no undefined/null values
-      Object.entries(acc[key]).forEach(([field, value]) => {
-        if (value === undefined || value === null) {
-          acc[key][field] = field.includes('Count') ? 0 : 
-                           Array.isArray(value) ? [] : '';
-        }
-      });
 
       return acc;
     }, {});
@@ -165,30 +153,29 @@ export class ChatService {
     const latestMessage = messages[messages.length - 1];
     
     try {
-      // Get relevant reviews
       const relevantDocs = await pineconeService.getRelevantReviews(
         latestMessage.content,
-        4
+        6
       );
       
-      // Extract metadata
       const bookMetadata = this.extractBookMetadata(relevantDocs);
       
-      // Format context
       const context = relevantDocs
         .map(doc => doc.pageContent)
         .filter(Boolean)
         .join('\n\n');
 
-      // Create prompt template
-      const prompt = ChatPromptTemplate.fromTemplate(SYSTEM_TEMPLATE);
+      const prompt = ChatPromptTemplate.fromMessages([
+        ["system", SYSTEM_TEMPLATE],
+        new MessagesPlaceholder("chat_history"),
+        ["human", "{question}"],
+      ]);
 
-      // Create chain
       const chain = RunnableSequence.from([
         {
           question: (input: string) => input,
           context: () => this.formatContext(context),
-          chat_history: () => this.formatChatHistory(messages),
+          chat_history: () => this.formatChatHistory(messages.slice(0, -1)),
           metadata: () => JSON.stringify(bookMetadata, null, 2)
         },
         prompt,

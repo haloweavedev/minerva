@@ -189,7 +189,7 @@ export default function BookReviewCard({
                   </Button>
                 )}
                 
-                {/* Read Review Button - Using postId directly */}
+                {/* Read Review Button */}
                 {postId && (
                   <Button 
                     variant="secondary"

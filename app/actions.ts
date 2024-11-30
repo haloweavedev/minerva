@@ -4,20 +4,54 @@ import { createStreamableValue } from 'ai/rsc';
 import { type Message } from 'ai';
 import { chatService } from '@/lib/services/chat';
 
-// Re-export Message type for use in other components
 export type { Message };
 
-// Timeout constant (30 seconds)
-const STREAM_TIMEOUT = 30000;
+// Increased timeout to 60 seconds
+const STREAM_TIMEOUT = 60000;
 
-/**
- * Server action to continue conversation with AI assistant
- * @param history Array of conversation messages
- * @returns Object containing message history and streamed response
- */
-export async function continueConversation(history: Message[]) {
+// Rate limiting constants
+const RATE_LIMIT = {
+  MAX_REQUESTS: 50,
+  WINDOW_MS: 60000, // 1 minute
+};
+
+// In-memory rate limiting (replace with Redis in production)
+const rateLimitStore = new Map<string, number[]>();
+
+function isRateLimited(userId: string): boolean {
+  const now = Date.now();
+  const userRequests = rateLimitStore.get(userId) || [];
+  
+  // Clean old requests
+  const recentRequests = userRequests.filter(
+    timestamp => now - timestamp < RATE_LIMIT.WINDOW_MS
+  );
+  
+  if (recentRequests.length >= RATE_LIMIT.MAX_REQUESTS) {
+    return true;
+  }
+  
+  recentRequests.push(now);
+  rateLimitStore.set(userId, recentRequests);
+  return false;
+}
+
+export async function continueConversation(
+  history: Message[],
+  userId: string = 'anonymous'
+) {
   const stream = createStreamableValue();
   
+  // Check rate limit
+  if (isRateLimited(userId)) {
+    stream.update("I apologize, but you've reached the rate limit. Please try again in a minute.");
+    stream.done();
+    return {
+      messages: history,
+      newMessage: stream.value,
+    };
+  }
+
   // Create timeout promise
   const timeoutPromise = new Promise((_, reject) => {
     setTimeout(() => {
@@ -27,16 +61,13 @@ export async function continueConversation(history: Message[]) {
 
   (async () => {
     try {
-      // Log incoming message
       const latestMessage = history[history.length - 1].content;
       console.log('Processing message:', latestMessage);
 
-      // Get streaming response from chat service
       const textStream = await chatService.processMessage(history);
       let fullResponse = '';
       let lastUpdate = Date.now();
 
-      // Stream response with race against timeout
       await Promise.race([
         (async () => {
           for await (const chunk of textStream) {
@@ -53,7 +84,6 @@ export async function continueConversation(history: Message[]) {
         timeoutPromise
       ]);
 
-      // Final update
       if (fullResponse) {
         stream.update(fullResponse);
         console.log('Completed response:', fullResponse.slice(0, 200) + '...');
@@ -78,13 +108,11 @@ export async function continueConversation(history: Message[]) {
         errorMessage = "An unexpected error occurred. Please try again.";
       }
 
-      // Send error message and complete stream
       stream.update(errorMessage);
       stream.done();
     }
   })();
 
-  // Return message history and stream
   return {
     messages: history,
     newMessage: stream.value,
