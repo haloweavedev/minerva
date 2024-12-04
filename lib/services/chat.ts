@@ -6,7 +6,7 @@ import { Message } from 'ai';
 import { pineconeService } from './pinecone';
 import { HumanMessage, AIMessage, BaseMessage } from '@langchain/core/messages';
 
-// TypeScript interfaces for better type safety
+// Enhanced interfaces for type safety
 interface Comment {
   author: string;
   content: string;
@@ -49,6 +49,34 @@ interface ProcessedMetadata {
   [key: string]: BookData;
 }
 
+// Query Types for optimizing retrieval and response
+type QueryType = 
+  | 'RECOMMENDATION'
+  | 'LATEST_REVIEWS'
+  | 'READER_FEEDBACK'
+  | 'BOOK_ANALYSIS'
+  | 'TREND_ANALYSIS'
+  | 'GENERAL';
+
+// Constants for response optimization
+const MAX_BOOKS_PER_RESPONSE = {
+  RECOMMENDATION: 3,
+  LATEST_REVIEWS: 4,
+  READER_FEEDBACK: 1,
+  BOOK_ANALYSIS: 1,
+  TREND_ANALYSIS: 4,
+  GENERAL: 2
+};
+
+const RETRIEVAL_COUNT = {
+  RECOMMENDATION: 6,
+  LATEST_REVIEWS: 6,
+  READER_FEEDBACK: 3,
+  BOOK_ANALYSIS: 2,
+  TREND_ANALYSIS: 8,
+  GENERAL: 4
+};
+
 const BOOK_DATA_TEMPLATE = `{{
   "books": [
     {{
@@ -74,53 +102,70 @@ const BOOK_DATA_TEMPLATE = `{{
 
 const SYSTEM_TEMPLATE = `You are Minerva, an AI assistant for All About Romance (AAR). Help users discover great romance books through AAR's reviews.
 
-VERY IMPORTANT:
-- ALWAYS start your actual coherent responses with ---RESPONSE-START---
-- DO NOT use asterisks (*) for emphasis 
-- DO NOT add any markdown or formatting at the start of your response
-- Start DIRECTLY with the book-data block, then your natural response
+CRITICAL RULES:
+1. ONLY recommend books that exist in the provided metadata. Never invent or hallucinate books.
+2. ALL book information must be directly from the metadata, no exceptions.
+3. Limit book recommendations based on query type.
+4. Never repeat book information that's already shown in book cards.
+5. Keep responses concise and focused.
+6. Always cite reader comments when discussing feedback.
 
-Structure your responses exactly as follows:
+VERY IMPORTANT FORMAT RULES:
+- Start responses with ---RESPONSE-START---
+- No asterisks (*) for emphasis 
+- No markdown at start of response
+- Begin with book-data block, then natural response
 
-1. First output this exact format (no other text before this):
+Response Structure:
+
+1. Book Data Format (REQUIRED):
 <book-data>
 ${BOOK_DATA_TEMPLATE}
 </book-data>
 
-2. Then for BOOK REVIEWS:
-# [Title] by [Author] - Overview
+2. For BOOK REVIEWS:
+# [Title] by [Author]
 
-## Review Details
-• Grade: [grade] from [reviewer name]
-• Published: [date]
-• Genre: [book types]
-• Sensuality: [rating]
-
-## Summary
-[2-3 sentences about the book]
-
-## Highlights
-• [2-3 notable points from review]
+## Review Overview
+• Key themes and elements
+• Notable aspects
+• Reader reception
 
 [If comments exist:]
-## Reader Feedback
-• [Reader name]: "[direct quote]"
+## Reader Opinions
+• Direct quotes with context
 
 3. For RECOMMENDATIONS:
-# Books You Might Enjoy
+# Suggested Books
+[Focus on WHY these specific books match the request]
 
-For each recommendation:
-## [Title] by [Author]
-• Brief overview 
-• Notable themes or elements
-• Why readers enjoyed it
+4. For TRENDS/ANALYSIS:
+# Analysis
+- Present clear statistics (e.g., "2 out of 5 books", "40% of recent reviews")
+- Compare specific metrics (grades, sensuality, genres)
+- Note data limitations (e.g., "Based on X available reviews")
+- Include time-based patterns when relevant
+- Support trends with specific examples
+- Identify notable outliers or exceptions
 
-Keep language natural and clear. Focus on what readers care about most.
+Remember for trends:
+- Use exact numbers from available data
+- Compare across relevant categories
+- Note sample size limitations
+- Focus on measurable patterns
+- Cite specific examples to support trends
+
+Remember:
+- Only include books that are DIRECTLY relevant
+- Focus on quality over quantity
+- Be specific about why books are recommended
+- Use reader comments to support points
+- Keep formatting clean and consistent
 
 Available metadata: {metadata}
 Context: {context}
 Human: {question}
-Assistant: Let me find relevant books based on your request:`;
+Assistant: Analyzing your request to provide relevant recommendations:`;
 
 export class ChatService {
   private llm: ChatOpenAI;
@@ -128,11 +173,52 @@ export class ChatService {
   constructor() {
     this.llm = new ChatOpenAI({
       modelName: "gpt-4o-mini",
-      temperature: 0.7,
+      temperature: 0.5, // Reduced for more consistent outputs
       streaming: true,
       maxTokens: 1500,
-      timeout: 60000 // 60 seconds timeout
+      timeout: 60000
     });
+  }
+
+  private classifyQuery(query: string): QueryType {
+    const normalizedQuery = query.toLowerCase();
+    
+    if (normalizedQuery.includes('similar') || 
+        normalizedQuery.includes('like') || 
+        normalizedQuery.includes('recommend')) {
+      return 'RECOMMENDATION';
+    }
+    
+    if (normalizedQuery.includes('latest') || 
+        normalizedQuery.includes('recent') || 
+        normalizedQuery.includes('new')) {
+      return 'LATEST_REVIEWS';
+    }
+    
+    if (normalizedQuery.includes('think') || 
+        normalizedQuery.includes('opinion') || 
+        normalizedQuery.includes('feedback') ||
+        normalizedQuery.includes('comments')) {
+      return 'READER_FEEDBACK';
+    }
+    
+    if (normalizedQuery.includes('compare') || 
+        normalizedQuery.includes('analysis') || 
+        normalizedQuery.includes('explain')) {
+      return 'BOOK_ANALYSIS';
+    }
+    
+    if (normalizedQuery.includes('trend') || 
+        normalizedQuery.includes('pattern') || 
+        normalizedQuery.includes('across') ||
+        normalizedQuery.includes('ratings') ||
+        normalizedQuery.includes('grades') ||
+        normalizedQuery.includes('sensuality') ||
+        normalizedQuery.includes('compare')) {
+      return 'TREND_ANALYSIS';
+    }
+    
+    return 'GENERAL';
   }
 
   private formatChatHistory(messages: Message[]): BaseMessage[] {
@@ -151,6 +237,14 @@ export class ChatService {
       .join('\n');
   }
 
+  private validateBookMetadata(bookData: BookData): boolean {
+    return !!(
+      bookData.title &&
+      bookData.author &&
+      (bookData.grade || bookData.sensuality || bookData.bookTypes.length > 0)
+    );
+  }
+
   private extractBookMetadata(docs: any[]): ProcessedMetadata {
     return docs.reduce((acc: ProcessedMetadata, doc) => {
       const metadata = doc.metadata as ReviewMetadata;
@@ -158,7 +252,6 @@ export class ChatService {
 
       const key = `${metadata.bookTitle}-${metadata.authorName}`;
       
-      // Fixed TypeScript error by properly typing the comment
       const validComments: Comment[] = (metadata.commentContents || [])
         .map((content: string, index: number) => ({
           author: metadata.commentAuthors?.[index]?.trim() || '',
@@ -166,7 +259,7 @@ export class ChatService {
         }))
         .filter((c: Comment) => c.author && c.content);
 
-      acc[key] = {
+      const bookData = {
         title: metadata.bookTitle.trim(),
         author: metadata.authorName.trim(),
         grade: metadata.grade?.trim() || null,
@@ -184,6 +277,11 @@ export class ChatService {
         reviewContent: metadata.text?.trim() || null
       };
 
+      // Only add valid book entries
+      if (this.validateBookMetadata(bookData)) {
+        acc[key] = bookData;
+      }
+
       return acc;
     }, {});
   }
@@ -192,14 +290,17 @@ export class ChatService {
     const latestMessage = messages[messages.length - 1];
     
     try {
-      // Get relevant reviews
+      const queryType = this.classifyQuery(latestMessage.content);
+      const retrievalCount = RETRIEVAL_COUNT[queryType];
+      
       const relevantDocs = await pineconeService.getRelevantReviews(
         latestMessage.content,
-        6
+        retrievalCount
       );
       
       const bookMetadata = this.extractBookMetadata(relevantDocs);
       
+      // Enhance context based on query type
       const context = relevantDocs
         .map(doc => doc.pageContent)
         .filter(Boolean)
@@ -216,14 +317,17 @@ export class ChatService {
           question: (input: string) => input,
           context: () => this.formatContext(context),
           chat_history: () => this.formatChatHistory(messages.slice(0, -1)),
-          metadata: () => JSON.stringify(bookMetadata, null, 2)
+          metadata: () => JSON.stringify({
+            books: bookMetadata,
+            maxBooks: MAX_BOOKS_PER_RESPONSE[queryType],
+            queryType
+          }, null, 2)
         },
         prompt,
         this.llm,
         new StringOutputParser()
       ]);
 
-      // Stream the response
       const stream = await chain.stream(latestMessage.content);
       return stream;
 
