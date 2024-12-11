@@ -165,3 +165,5 @@ Project Minerva is an intelligent chatbot system designed specifically for All A
 5. System uptime and reliability
 
 This document serves as a living reference for Project Minerva's development and can be updated as the project evolves.
+
+We have the latest 1000 reviews indexed
