@@ -10,6 +10,7 @@ import { Book } from "@/lib/validators/book-data";
 
 // Constants
 const ResponseStartMarker = '---RESPONSE-START---';
+const ResponseEndMarker = '---RESPONSE-END---';
 
 interface ProcessedContent {
   books: Book[];
@@ -153,15 +154,17 @@ const ChatMessage = memo(({ message, isLoading }: ChatMessageProps) => {
 ChatMessage.displayName = "ChatMessage";
 
 function cleanResponseContent(content: string): string {
-  const markerIndex = content.indexOf(ResponseStartMarker);
-  
-  if (markerIndex === -1) {
-    return content;
+  const startIndex = content.indexOf(ResponseStartMarker);
+  let cleanedContent = startIndex === -1 ? content : 
+    content.substring(startIndex + ResponseStartMarker.length);
+    
+  // Remove end marker if present
+  const endIndex = cleanedContent.indexOf(ResponseEndMarker);
+  if (endIndex !== -1) {
+    cleanedContent = cleanedContent.substring(0, endIndex);
   }
-
-  return content
-    .substring(markerIndex + ResponseStartMarker.length)
-    .trim();
+  
+  return cleanedContent.trim();
 }
 
 function processMessageContent(content: string): ProcessedContent {

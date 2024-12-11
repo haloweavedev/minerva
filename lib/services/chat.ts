@@ -112,6 +112,7 @@ CRITICAL RULES:
 
 VERY IMPORTANT FORMAT RULES:
 - Start responses with ---RESPONSE-START---
+- Do not add any response end markers
 - No asterisks (*) for emphasis 
 - No markdown at start of response
 - Begin with book-data block, then natural response
